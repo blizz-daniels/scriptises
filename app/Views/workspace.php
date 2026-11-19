@@ -92,7 +92,8 @@ foreach ($scenes as $scene) {
                     <summary>Original import sources</summary>
                     <ul>
                         <?php foreach ($imports as $import): ?>
-                            <li><a href="/projects/<?= $e($project['uuid']) ?>/imports/<?= (int) $import['id'] ?>">Download <?= $e($import['source_type'] === 'json' ? 'JSON' : 'pasted text') ?> from <?= $e($import['created_at']) ?></a></li>
+                            <?php $formatLabel = ['json' => 'JSON', 'paste' => 'pasted text', 'docx' => 'Word document', 'fountain' => 'Fountain file']; ?>
+                            <li><a href="/projects/<?= $e($project['uuid']) ?>/imports/<?= (int) $import['id'] ?>">Download <?= $e($formatLabel[$import['source_type']]) ?> from <?= $e($import['created_at']) ?></a></li>
                         <?php endforeach; ?>
                     </ul>
                 </details>

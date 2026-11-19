@@ -12,6 +12,7 @@ $flash = \App\Support\Flash::pull();
     <title><?= $e($pageTitle ?? 'Scriptises') ?> · Scriptises</title>
     <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/app.css">
+    <?php if (!empty($pageStylesheet)): ?><link rel="stylesheet" href="<?= $e($pageStylesheet) ?>"><?php endif; ?>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to content</a>

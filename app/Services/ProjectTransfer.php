@@ -142,7 +142,7 @@ final class ProjectTransfer
     public function restore(int $user, array $input, string $source, string $format, ?string $destination = null): string
     {
         $document = ProjectDocument::validate($input);
-        if (strlen($source) > ProjectDocument::MAX_BYTES || !in_array($format, ['json', 'paste'], true)) {
+        if (strlen($source) > ProjectDocument::MAX_BYTES || !in_array($format, ['json', 'paste', 'docx', 'fountain'], true)) {
             throw new RuntimeException('The source is too large or its format is unsupported.');
         }
         $pdo = $this->db->pdo();

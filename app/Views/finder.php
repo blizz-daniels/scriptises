@@ -67,9 +67,14 @@ $highlight = static function (string $text) use ($e, $filters): string {
             <div class="page-actions">
                 <button class="small" type="button" data-save-now>Save now</button>
                 <a class="button small" href="<?= $path ?>/export?<?= $e(http_build_query(['scope' => 'filtered'] + $filters)) ?>">Export matches</a>
+                <a class="button small" href="<?= $path ?>/pdf?<?= $e(http_build_query(['scope' => 'filtered', 'include_notes' => '1'] + $filters)) ?>#pdf-preview">Preview matches as PDF</a>
                 <form id="selection-export" action="<?= $path ?>/export" method="get">
                     <input type="hidden" name="scope" value="selected">
-                    <button class="small" type="submit">Export checked</button>
+                    <input type="hidden" name="include_notes" value="1">
+                    <div class="page-actions">
+                        <button class="small" type="submit">Export checked</button>
+                        <button class="small" type="submit" formaction="<?= $path ?>/pdf#pdf-preview">Preview checked as PDF</button>
+                    </div>
                 </form>
             </div>
         <?php endif; ?>

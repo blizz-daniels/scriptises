@@ -7,10 +7,12 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use App\Controllers\ApiController;
 use App\Controllers\AuthController;
 use App\Controllers\ProjectController;
+use App\Controllers\PdfController;
 use App\Controllers\ManagementController;
 use App\Controllers\TransferController;
 use App\Services\AuthService;
 use App\Services\ManagementService;
+use App\Services\PdfExport;
 use App\Services\ProjectTransfer;
 use App\Services\ScreenplayService;
 use App\Support\Flash;
@@ -20,6 +22,7 @@ use App\Support\View;
 $auth = new AuthService($database);
 $screenplays = new ScreenplayService($database);
 $management = new ManagementService($database, $screenplays);
+$pdfController = new PdfController($auth, $screenplays, $management, new PdfExport($screenplays, $management));
 $managementController = new ManagementController($auth, $screenplays, $management);
 $transferController = new TransferController($auth, $screenplays, $management, new ProjectTransfer($database, $screenplays, $management));
 $authController = new AuthController($auth);
@@ -57,6 +60,8 @@ try {
         if ($method === 'POST') { $managementController->restoreBlock($matches[1], $matches[2]); exit; }
     }
     if ($method === 'GET' && preg_match('#^/projects/([a-f0-9-]{36})/export$#i', $path, $matches)) { $transferController->export($matches[1]); exit; }
+    if (in_array($method, ['GET', 'POST'], true) && preg_match('#^/projects/([a-f0-9-]{36})/pdf$#i', $path, $matches)) { $pdfController->show($matches[1], $method === 'POST'); exit; }
+    if ($method === 'POST' && preg_match('#^/projects/([a-f0-9-]{36})/pdf/download$#i', $path, $matches)) { $pdfController->download($matches[1]); exit; }
     if ($method === 'GET' && preg_match('#^/projects/([a-f0-9-]{36})/imports/(\d+)$#i', $path, $matches)) { $transferController->source($matches[1], (int) $matches[2]); exit; }
 
     if (preg_match('#^/projects/([a-f0-9-]{36})$#i', $path, $matches)) {

@@ -3,7 +3,12 @@
   "description": "A lightweight private screenplay writing workspace.",
   "type": "project",
   "require": {
-    "php": ">=8.2"
+    "php": ">=8.2",
+    "ext-pdo": "*",
+    "ext-mbstring": "*",
+    "ext-zip": "*",
+    "mpdf/mpdf": "^8.3",
+    "phpoffice/phpword": "^1.4"
   },
   "autoload": {
     "psr-4": {

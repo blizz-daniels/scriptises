@@ -1,0 +1,11 @@
+.pdf-title { font-size: 19pt; text-align: center; font-weight: bold; margin: 0 0 18pt; }
+.pdf-selection { font-size: 10pt; text-align: center; color: #57504a; margin: -8pt 0 18pt; }
+.pdf-context { font-size: 9pt; color: #57504a; margin: 13pt 0 4pt; page-break-after: avoid; }
+.pdf-heading { font-size: 11pt; text-transform: uppercase; font-weight: bold; margin: 12pt 0 6pt; page-break-after: avoid; }
+.pdf-action { margin: 0 0 7pt; }
+.pdf-cue { text-transform: uppercase; margin: 8pt 0 0 36%; page-break-after: avoid; }
+.pdf-dialogue { margin: 0 18% 5pt 19%; }
+.pdf-parenthetical { margin: 0 18% 0 27%; page-break-after: avoid; }
+.pdf-transition { text-transform: uppercase; text-align: right; margin: 9pt 0; }
+.pdf-centered { text-align: center; margin: 9pt 0; }
+.pdf-note { color: #57504a; font-size: 10pt; border-left: 1pt solid #8b8177; padding-left: 6pt; margin: 5pt 0; }

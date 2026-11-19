@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Services\AuthService;
+use App\Services\DocxReader;
+use App\Services\FountainParser;
 use App\Services\ManagementService;
 use App\Services\PasteParser;
 use App\Services\ProjectDocument;
@@ -60,22 +62,46 @@ final class TransferController extends BaseController
                 Flash::set('error', $error->getMessage());
                 Http::redirect('/import');
             }
-        } elseif ($format === 'json') {
-            $file = $_FILES['backup'] ?? [];
-            if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])
-                || $file['size'] > ProjectDocument::MAX_BYTES || strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) !== 'json') {
-                throw new RuntimeException('Choose a .json backup within your server’s upload limit (up to 8 MB).');
+        } elseif (in_array($format, ['file', 'json', 'docx', 'fountain'], true)) {
+            try {
+                [$format, $source, $draft] = $this->stageFile();
+            } catch (RuntimeException $error) {
+                Flash::set('error', $error->getMessage());
+                Http::redirect('/import');
             }
-            $source = file_get_contents($file['tmp_name']);
-            if ($source === false) {
-                throw new RuntimeException('The JSON backup could not be read.');
-            }
-            $draft = ['document' => ProjectDocument::decode($source), 'flags' => []];
         } else {
-            throw new RuntimeException('Choose JSON backup or pasted text.');
+            throw new RuntimeException('Choose a screenplay file or paste text.');
         }
         $_SESSION[self::PENDING] = $draft + ['source' => $source, 'format' => $format, 'token' => bin2hex(random_bytes(24))];
         Http::redirect('/import#review');
+    }
+
+    private function stageFile(): array
+    {
+        $file = $_FILES['backup'] ?? [];
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_string($file['tmp_name'] ?? null)
+            || !is_uploaded_file($file['tmp_name']) || $file['size'] > ProjectDocument::MAX_BYTES) {
+            throw new RuntimeException('Choose a readable file within your server’s upload limit (up to 8 MB).');
+        }
+        $name = basename(str_replace('\\', '/', $file['name']));
+        $format = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if (!in_array($format, ['json', 'docx', 'fountain'], true)) {
+            throw new RuntimeException('Choose a .json, .docx, or .fountain file.');
+        }
+        $source = file_get_contents($file['tmp_name']);
+        if ($source === false || $source === '') {
+            throw new RuntimeException('The uploaded file is empty or unreadable.');
+        }
+        $title = mb_substr(trim(mb_scrub(pathinfo($name, PATHINFO_FILENAME))), 0, 255) ?: 'Imported screenplay';
+        if ($format === 'docx') {
+            $read = DocxReader::read($file['tmp_name']);
+            $draft = PasteParser::parse($title, $read['text'], $read['hints']) + ['preview' => $read['text']];
+        } elseif ($format === 'fountain') {
+            $draft = FountainParser::parse($source, $title);
+        } else {
+            $draft = ['document' => ProjectDocument::decode($source), 'flags' => []];
+        }
+        return [$format, $source, $draft];
     }
 
     public function confirm(): void
@@ -124,7 +150,7 @@ final class TransferController extends BaseController
     {
         $this->user();
         $pending = $_SESSION[self::PENDING] ?? throw new RuntimeException('No import draft is open.');
-        $this->download($pending['source'], 'original-screenplay.' . ($pending['format'] === 'json' ? 'json' : 'txt'), 'text/plain');
+        $this->downloadSource($pending['source'], $pending['format'], 'original-screenplay');
     }
 
     public function export(string $uuid): void
@@ -154,12 +180,23 @@ final class TransferController extends BaseController
         $project = $this->scripts->project((int) $user['id'], $uuid);
         $record = $this->management->rows('SELECT source_type, original_source FROM import_records WHERE id = ? AND project_id = ?', [$id, $project['id']])[0]
             ?? throw new RuntimeException('The original source was not found.');
-        $this->download($record['original_source'], 'original-screenplay-' . $id . ($record['source_type'] === 'json' ? '.json' : '.txt'), 'text/plain');
+        $this->downloadSource($record['original_source'], $record['source_type'], 'original-screenplay-' . $id);
+    }
+
+    private function downloadSource(string $payload, string $format, string $filename): never
+    {
+        $extension = $format === 'paste' ? 'txt' : $format;
+        $mime = match ($format) {
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'json' => 'application/json; charset=utf-8',
+            default => 'text/plain; charset=utf-8',
+        };
+        $this->download($payload, "$filename.$extension", $mime);
     }
 
     private function download(string $payload, string $filename, string $type): never
     {
-        header("Content-Type: $type; charset=utf-8");
+        header("Content-Type: $type");
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('Cache-Control: private, no-store');
         header('X-Content-Type-Options: nosniff');

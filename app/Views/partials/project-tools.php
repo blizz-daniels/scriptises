@@ -4,4 +4,5 @@
     <a href="<?= $toolsPath ?>/characters">Characters</a>
     <a href="<?= $toolsPath ?>/plots">Plot threads</a>
     <a href="<?= $toolsPath ?>/export">JSON backup</a>
+    <a href="<?= $toolsPath ?>/pdf">Export PDF</a>
 </nav>

@@ -490,11 +490,23 @@ final class ScreenplayService
     public function screenplay(int $userId, string $projectUuid): array
     {
         $project = $this->project($userId, $projectUuid);
-        $sql = 'SELECT s.*, e.title AS episode_title, a.title AS act_title FROM scenes s LEFT JOIN episodes e ON e.id = s.episode_id LEFT JOIN acts a ON a.id = s.act_id WHERE s.project_id = ? ORDER BY s.episode_id IS NULL DESC, e.position, s.act_id IS NULL DESC, a.position, s.position, s.id';
+        $sql = 'SELECT s.*, e.title AS episode_title, a.title AS act_title FROM scenes s LEFT JOIN episodes e ON e.id = s.episode_id LEFT JOIN acts a ON a.id = s.act_id WHERE s.project_id = ? ORDER BY s.episode_id IS NULL DESC, e.position, s.act_id IS NULL DESC, a.position, a.id, s.position, s.id';
         $scenes = $this->rows($this->database->pdo()->prepare($sql), [(int) $project['id']]);
-        $blockQuery = $this->database->pdo()->prepare('SELECT b.*, c.name AS speaker_name FROM content_blocks b LEFT JOIN characters c ON c.id = b.speaker_character_id WHERE b.scene_id = ? ORDER BY b.position');
+        if (!$scenes) {
+            return [];
+        }
+        $blockQuery = $this->database->pdo()->prepare(
+            'SELECT b.scene_id, b.block_type, b.content, c.name AS speaker_name
+             FROM content_blocks b JOIN scenes s ON s.id = b.scene_id LEFT JOIN characters c ON c.id = b.speaker_character_id
+             WHERE s.project_id = ? ORDER BY b.scene_id, b.position'
+        );
+        $byScene = [];
+        $blockQuery->execute([(int) $project['id']]);
+        while ($block = $blockQuery->fetch()) {
+            $byScene[$block['scene_id']][] = $block;
+        }
         foreach ($scenes as &$scene) {
-            $scene['blocks'] = $this->rows($blockQuery, [(int) $scene['id']]);
+            $scene['blocks'] = $byScene[$scene['id']] ?? [];
         }
         unset($scene);
         return $scenes;

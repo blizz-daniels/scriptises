@@ -160,7 +160,26 @@
     }
     selected = scene.id;
     const index = draft.scenes.indexOf(scene);
-    editor.append(picker('Scene', draft.scenes.map((item, number) => [item.id, (number + 1) + '. ' + (item.heading || 'Untitled scene')]), selected, (value) => { selected = value; render(); }));
+    const navigation = element('div');
+    navigation.className = 'page-actions review-nav';
+    const move = (offset) => {
+      selected = draft.scenes[index + offset].id;
+      render();
+      editor.querySelector('[data-review-scene-picker]')?.focus();
+    };
+    const previous = button('Previous scene', () => move(-1));
+    const next = button('Next scene', () => move(1));
+    previous.disabled = index === 0;
+    next.disabled = index === draft.scenes.length - 1;
+    navigation.append(previous, element('span', `Scene ${index + 1} of ${draft.scenes.length}`), next);
+    editor.append(navigation);
+    const scenePicker = picker('Scene', draft.scenes.map((item, number) => [item.id, (number + 1) + '. ' + (item.heading || 'Untitled scene')]), selected, (value) => {
+      selected = value;
+      render();
+      editor.querySelector('[data-review-scene-picker]')?.focus();
+    });
+    scenePicker.querySelector('select').dataset.reviewScenePicker = '';
+    editor.append(scenePicker);
     if (index > 0) actions.append(button('Combine with previous', () => changeStructure(() => {
       const previous = draft.scenes[index - 1];
       if (scene.heading) previous.blocks.push({ id: id(), type: 'action', text: scene.heading });
@@ -197,6 +216,21 @@
         render();
       })
     );
+    const metadata = element('details');
+    metadata.className = 'link-options';
+    const metadataFields = element('div');
+    metadataFields.className = 'form-stack compact';
+    metadataFields.append(
+      picker('Interior / exterior', [['', 'Unspecified'], ...['INT.', 'EXT.', 'INT./EXT.', 'OTHER'].map(type => [type, type])], scene.int_ext, (value) => {
+        scene.int_ext = value || null;
+        saveDraft();
+      }),
+      textInput('Location', scene.location, (value) => { scene.location = value || null; }),
+      textInput('Time of day', scene.time_of_day, (value) => { scene.time_of_day = value || null; }),
+      textInput('Summary', scene.summary, (value) => { scene.summary = value || null; }, 3)
+    );
+    metadata.append(element('summary', 'Scene details'), metadataFields);
+    editor.append(metadata);
     scene.blocks.forEach((block, blockIndex) => editor.append(blockControls(scene, block, blockIndex, index)));
     editor.append(button('Add block', () => changeStructure(() => {
       scene.blocks.push({ id: id(), type: 'action', text: '' });

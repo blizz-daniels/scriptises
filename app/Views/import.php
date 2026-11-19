@@ -18,12 +18,14 @@ $csrf = $e(\App\Support\Csrf::token());
                 </form>
             </section>
             <section class="panel">
-                <h2>Restore a JSON file</h2>
+                <h2>Upload a screenplay file</h2>
                 <form method="post" action="/import/stage" enctype="multipart/form-data" class="form-stack">
                     <input type="hidden" name="_csrf" value="<?= $csrf ?>">
-                    <input type="hidden" name="format" value="json">
-                    <label>JSON backup or selection <input type="file" name="backup" accept=".json,application/json" required></label>
-                    <button class="primary">Review JSON file</button>
+                    <input type="hidden" name="format" value="file">
+                    <label>Word (.docx), Fountain (.fountain), or JSON
+                        <input type="file" name="backup" accept=".docx,.fountain,.json" required>
+                    </label>
+                    <button class="primary">Review uploaded file</button>
                 </form>
             </section>
         </div>
@@ -38,10 +40,11 @@ $csrf = $e(\App\Support\Csrf::token());
             </div>
             <div class="import-columns review-columns">
                 <section class="panel">
-                    <h3>Original source</h3>
+                    <?php $sourcePreview = $pending['preview'] ?? $pending['source']; ?>
+                    <h3><?= $pending['format'] === 'docx' ? 'Extracted Word text' : 'Original source' ?></h3>
                     <a class="back-link" href="/import/source">Download original</a>
-                    <pre class="writing-text source-preview"><?= $e(mb_strcut($pending['source'], 0, 80000)) ?></pre>
-                    <?php if (strlen($pending['source']) > 80000): ?><p class="muted">Preview shortened. Download the full original above.</p><?php endif; ?>
+                    <pre class="writing-text source-preview"><?= $e(mb_strcut($sourcePreview, 0, 80000)) ?></pre>
+                    <?php if (strlen($sourcePreview) > 80000): ?><p class="muted">Preview shortened. Download the full original above.</p><?php endif; ?>
                 </section>
                 <form class="panel form-stack" action="/import/confirm" method="post" enctype="multipart/form-data" data-import-review>
                     <input type="hidden" name="_csrf" value="<?= $csrf ?>">

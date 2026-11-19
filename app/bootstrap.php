@@ -11,6 +11,11 @@ ini_set('display_errors', $config['debug'] ? '1' : '0');
 ini_set('log_errors', '1');
 ini_set('error_log', dirname(__DIR__) . '/storage/logs/php-error.log');
 
+$autoload = dirname(__DIR__) . '/vendor/autoload.php';
+if (is_file($autoload)) {
+    require_once $autoload;
+}
+
 spl_autoload_register(static function (string $class): void {
     $prefix = 'App\\';
     if (!str_starts_with($class, $prefix)) {
