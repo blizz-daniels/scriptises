@@ -33,11 +33,18 @@ final class TransferController extends BaseController
     public function show(): void
     {
         $user = $this->user();
+        $pending = $_SESSION[self::PENDING] ?? null;
+        $requestedProject = is_string($_GET['project'] ?? null) ? $_GET['project'] : '';
+        if ($pending && $requestedProject !== ($pending['destination'] ?? '')) {
+            Http::redirect(self::importPath($pending['destination'] ?? '') . '#review');
+        }
+        $catalog = $requestedProject === '' ? [] : $this->scripts->catalog((int) $user['id'], $requestedProject);
         View::render('import', [
             'user' => $user,
             'pageTitle' => 'Import screenplay',
-            'projects' => $this->scripts->projectsForUser((int) $user['id'], true),
-            'pending' => $_SESSION[self::PENDING] ?? null,
+            'projects' => $catalog ? [] : $this->scripts->projectsForUser((int) $user['id'], true),
+            'catalog' => $catalog,
+            'pending' => $pending,
             'pasteText' => $_SESSION['import_paste_text'] ?? '',
             'pasteTitle' => $_SESSION['import_paste_title'] ?? '',
         ]);
@@ -46,9 +53,15 @@ final class TransferController extends BaseController
 
     public function stage(): void
     {
-        $this->user();
+        $user = $this->user();
         $this->csrf();
         $format = $this->requestText('format');
+        $destination = $this->requestText('project');
+        $project = $destination === '' ? null : $this->scripts->project((int) $user['id'], $destination);
+        $path = self::importPath($destination);
+        if ($project !== null && $format !== 'json') {
+            throw new RuntimeException('Choose a JSON file to import into this project.');
+        }
         if ($format === 'paste') {
             $source = is_string($_POST['screenplay'] ?? null) ? $_POST['screenplay'] : '';
             $title = $this->requestText('title');
@@ -60,23 +73,23 @@ final class TransferController extends BaseController
                     $_SESSION['import_paste_title'] = mb_substr($title, 0, 255);
                 }
                 Flash::set('error', $error->getMessage());
-                Http::redirect('/import');
+                Http::redirect($path);
             }
         } elseif (in_array($format, ['file', 'json', 'docx', 'fountain'], true)) {
             try {
-                [$format, $source, $draft] = $this->stageFile();
+                [$format, $source, $draft] = $this->stageFile($project);
             } catch (RuntimeException $error) {
                 Flash::set('error', $error->getMessage());
-                Http::redirect('/import');
+                Http::redirect($path);
             }
         } else {
             throw new RuntimeException('Choose a screenplay file or paste text.');
         }
-        $_SESSION[self::PENDING] = $draft + ['source' => $source, 'format' => $format, 'token' => bin2hex(random_bytes(24))];
-        Http::redirect('/import#review');
+        $_SESSION[self::PENDING] = $draft + ['destination' => $destination, 'source' => $source, 'format' => $format, 'token' => bin2hex(random_bytes(24))];
+        Http::redirect($path . '#review');
     }
 
-    private function stageFile(): array
+    private function stageFile(?array $project): array
     {
         $file = $_FILES['backup'] ?? [];
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_string($file['tmp_name'] ?? null)
@@ -85,6 +98,9 @@ final class TransferController extends BaseController
         }
         $name = basename(str_replace('\\', '/', $file['name']));
         $format = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if ($project !== null && $format !== 'json') {
+            throw new RuntimeException('Choose a .json file.');
+        }
         if (!in_array($format, ['json', 'docx', 'fountain'], true)) {
             throw new RuntimeException('Choose a .json, .docx, or .fountain file.');
         }
@@ -99,7 +115,12 @@ final class TransferController extends BaseController
         } elseif ($format === 'fountain') {
             $draft = FountainParser::parse($source, $title);
         } else {
-            $draft = ['document' => ProjectDocument::decode($source), 'flags' => []];
+            $defaults = $project === null ? null : [
+                'title' => $project['title'],
+                'type' => $project['project_type'],
+                'status' => $project['status'],
+            ];
+            $draft = ['document' => ProjectDocument::decode($source, $defaults), 'flags' => []];
         }
         return [$format, $source, $draft];
     }
@@ -113,27 +134,34 @@ final class TransferController extends BaseController
             throw new RuntimeException('This review has expired. Start the import again.');
         }
         $review = $_POST['proposal'] ?? '';
-        $destination = $this->requestText('destination');
+        $project = $pending['destination'] ?? '';
+        $destination = $project !== '' ? $project : $this->requestText('destination');
+        $scope = $project !== '' ? $this->requestText('scope') : '';
+        $reviewPath = self::importPath($project) . '#review';
         if (!preg_match('/^(?:new|[0-9a-f-]{36})$/D', $destination)) {
             throw new RuntimeException('Choose a new project or an existing destination.');
         }
         try {
             $document = is_string($review) && $review !== '' ? ProjectDocument::decode($review) : $pending['document'];
             $_SESSION[self::PENDING]['document'] = $document;
-            $uuid = $this->transfer->restore((int) $user['id'], $document, $pending['source'], $pending['format'], $destination === 'new' ? null : $destination);
+            $_SESSION[self::PENDING]['scope'] = $scope;
+            if ($project !== '' && !$document['scenes'] && !$document['acts']) {
+                throw new RuntimeException('The JSON file must contain an act or a scene.');
+            }
+            $uuid = $this->transfer->restore((int) $user['id'], $document, $pending['source'], $pending['format'], $destination === 'new' ? null : $destination, $scope);
         } catch (\PDOException $error) {
             error_log('Screenplay import rolled back. Database code: ' . $error->getCode());
             Flash::set('error', 'The import could not be saved. Check for duplicate character names or invalid ordering.');
-            Http::redirect('/import#review');
+            Http::redirect($reviewPath);
         } catch (RuntimeException $error) {
             if (is_string($review) && strlen($review) <= ProjectDocument::MAX_BYTES) {
                 $_SESSION[self::PENDING]['review'] = $review;
             }
             Flash::set('error', $error->getMessage());
-            Http::redirect('/import#review');
+            Http::redirect($reviewPath);
         }
         unset($_SESSION[self::PENDING]);
-        Flash::set('success', 'Screenplay imported.');
+        Flash::set('success', $project === '' ? 'Screenplay imported.' : 'JSON added to the project.');
         Http::redirect("/projects/$uuid");
     }
 
@@ -141,9 +169,15 @@ final class TransferController extends BaseController
     {
         $this->user();
         $this->csrf();
+        $destination = $_SESSION[self::PENDING]['destination'] ?? '';
         unset($_SESSION[self::PENDING]);
         Flash::set('success', 'Import draft discarded.');
-        Http::redirect('/import');
+        Http::redirect(self::importPath($destination));
+    }
+
+    private static function importPath(string $project): string
+    {
+        return $project === '' ? '/import' : '/import?project=' . rawurlencode($project);
     }
 
     public function original(): void

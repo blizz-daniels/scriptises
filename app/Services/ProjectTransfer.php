@@ -139,7 +139,7 @@ final class ProjectTransfer
         return $document;
     }
 
-    public function restore(int $user, array $input, string $source, string $format, ?string $destination = null): string
+    public function restore(int $user, array $input, string $source, string $format, ?string $destination = null, string $scope = ''): string
     {
         $document = ProjectDocument::validate($input);
         if (strlen($source) > ProjectDocument::MAX_BYTES || !in_array($format, ['json', 'paste', 'docx', 'fountain'], true)) {
@@ -157,7 +157,8 @@ final class ProjectTransfer
                 $lock = $pdo->prepare('SELECT id FROM projects WHERE id = ? FOR UPDATE');
                 $lock->execute([$project['id']]);
             }
-            $this->restoreRows((int) $project['id'], $document, $destination !== null);
+            $target = $scope === '' ? null : $this->importTarget((int) $project['id'], $scope, $document);
+            $this->restoreRows((int) $project['id'], $document, $destination !== null, $target);
             $pdo->prepare('INSERT INTO import_records (project_id, source_type, original_source) VALUES (?, ?, ?)')
                 ->execute([$project['id'], $format, $source]);
             $pdo->prepare('INSERT INTO revisions (project_id, actor_id, entity_type, entity_uuid, action, payload) VALUES (?, ?, ?, ?, ?, ?)')
@@ -171,7 +172,24 @@ final class ProjectTransfer
         }
     }
 
-    private function restoreRows(int $project, array $document, bool $append): void
+    private function importTarget(int $project, string $scope, array $document): array
+    {
+        if (!preg_match('/^(act|episode):([0-9a-f-]{36})$/D', $scope, $matches)) {
+            throw new RuntimeException('Choose an act or episode from this project.');
+        }
+        [, $kind, $uuid] = $matches;
+        if (count($document['episodes']) > 1 || ($kind === 'act' && (count($document['acts']) > 1 || !$document['scenes']))) {
+            throw new RuntimeException('Choose Project outline to keep multiple source episodes or acts together. Adding to an existing act requires scenes.');
+        }
+        $sql = $kind === 'act'
+            ? 'SELECT id AS act_id, episode_id FROM acts WHERE project_id = ? AND uuid = ? FOR UPDATE'
+            : 'SELECT NULL AS act_id, id AS episode_id FROM episodes WHERE project_id = ? AND uuid = ? FOR UPDATE';
+        $statement = $this->db->pdo()->prepare($sql);
+        $statement->execute([$project, $uuid]);
+        return $statement->fetch() ?: throw new RuntimeException('The destination is no longer available in this project.');
+    }
+
+    private function restoreRows(int $project, array $document, bool $append, ?array $target): void
     {
         $pdo = $this->db->pdo();
         $map = ['episodes' => [], 'acts' => [], 'characters' => [], 'scenes' => []];
@@ -202,16 +220,22 @@ final class ProjectTransfer
             $offset[$table] = $append ? (int) $query->fetchColumn() : 0;
         }
         foreach ($document['episodes'] as $row) {
-            $episode->execute([Uuid::v4(), $project, $row['title'], $row['position'] + $offset['episodes']]);
-            $map['episodes'][$row['id']] = $pdo->lastInsertId();
+            if ($target === null) {
+                $episode->execute([Uuid::v4(), $project, $row['title'], $row['position'] + $offset['episodes']]);
+            }
+            $map['episodes'][$row['id']] = $target === null ? $pdo->lastInsertId() : $target['episode_id'];
         }
         foreach ($document['acts'] as $row) {
-            $act->execute([Uuid::v4(), $project, $map['episodes'][$row['episode_id']] ?? null, $row['title'], $row['position'] + $offset['acts']]);
-            $map['acts'][$row['id']] = $pdo->lastInsertId();
+            if (($target['act_id'] ?? null) === null) {
+                $parent = $target === null ? ($map['episodes'][$row['episode_id']] ?? null) : $target['episode_id'];
+                $act->execute([Uuid::v4(), $project, $parent, $row['title'], $row['position'] + $offset['acts']]);
+            }
+            $map['acts'][$row['id']] = $target['act_id'] ?? $pdo->lastInsertId();
         }
         foreach ($document['scenes'] as $row) {
+            $parent = $target === null ? ($map['episodes'][$row['episode_id']] ?? null) : $target['episode_id'];
             $scene->execute([
-                Uuid::v4(), $project, $map['episodes'][$row['episode_id']] ?? null, $map['acts'][$row['act_id']] ?? null,
+                Uuid::v4(), $project, $parent, $target['act_id'] ?? $map['acts'][$row['act_id']] ?? null,
                 $row['position'] + $offset['scenes'], $row['heading'] ?? '', $row['int_ext'], $row['location'], $row['time_of_day'], $row['summary'],
             ]);
             $id = $pdo->lastInsertId();
@@ -234,7 +258,9 @@ final class ProjectTransfer
             foreach (ManagementService::PLOT_LINKS as $kind) {
                 $link = $pdo->prepare("INSERT INTO plot_$kind (plot_id, entity_id) VALUES (?, ?)");
                 foreach ($row[$kind] as $reference) {
-                    $link->execute([$id, $map[$kind][$reference]]);
+                    if ($map[$kind][$reference] !== null) {
+                        $link->execute([$id, $map[$kind][$reference]]);
+                    }
                 }
             }
         }

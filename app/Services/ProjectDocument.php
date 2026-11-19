@@ -12,7 +12,7 @@ final class ProjectDocument
     public const VERSION = '1.0.0';
     public const MAX_BYTES = 8_000_000;
 
-    public static function decode(string $source): array
+    public static function decode(string $source, ?array $destinationProject = null): array
     {
         if ($source === '' || strlen($source) > self::MAX_BYTES) {
             throw new RuntimeException('Choose a JSON backup under 8 MB.');
@@ -28,7 +28,48 @@ final class ProjectDocument
         if (!is_array($document)) {
             throw new RuntimeException('The backup must be a JSON object.');
         }
+        if ($destinationProject !== null) {
+            $document = self::section($document, $destinationProject);
+        }
         return self::validate(self::flatten($document));
+    }
+
+    private static function section(array $input, array $project): array
+    {
+        if (isset($input['scene']) || isset($input['heading']) || isset($input['blocks'])) {
+            $input['scenes'] = [$input['scene'] ?? $input];
+        } elseif (isset($input['act']) || (isset($input['title']) && isset($input['scenes']))) {
+            $input['acts'] = [$input['act'] ?? array_intersect_key($input, array_flip(['id', 'title', 'position', 'episode_id', 'scenes']))];
+            if (!isset($input['act'])) {
+                unset($input['scenes']);
+            }
+        }
+        $input += ['schema_version' => self::VERSION, 'project' => $project];
+        foreach (['characters', 'episodes', 'acts', 'scenes', 'plot_threads'] as $kind) {
+            if (isset($input[$kind])) {
+                $input[$kind] = self::sectionRows(self::list($input[$kind], $kind), $kind);
+            }
+        }
+        return $input;
+    }
+
+    private static function sectionRows(array $rows, string $kind): array
+    {
+        foreach ($rows as &$row) {
+            if (!is_array($row)) {
+                throw new RuntimeException("Each item in $kind must be an object.");
+            }
+            $row += ['id' => ($kind === 'characters' ? ($row['key'] ?? null) : null) ?? Uuid::v4()];
+            foreach (['acts', 'scenes', 'blocks'] as $child) {
+                if (isset($row[$child])) {
+                    $row[$child] = self::sectionRows(self::list($row[$child], $child), $child);
+                }
+            }
+            if ($kind === 'blocks') {
+                $row += ['speaker_id' => $row['speaker'] ?? null];
+            }
+        }
+        return $rows;
     }
 
     private static function unpack(mixed $value): mixed
@@ -62,14 +103,6 @@ final class ProjectDocument
                     throw new RuntimeException('Each scene must be an object.');
                 }
                 $scene += ['id' => Uuid::v4(), 'episode_id' => $episode, 'act_id' => $act];
-                if (is_array($scene['heading'] ?? null)) {
-                    $heading = $scene['heading'];
-                    $place = self::text($heading['location'] ?? null, 'heading.location', 255);
-                    $prefix = self::text($heading['int_ext'] ?? null, 'heading.int_ext', 15);
-                    $time = self::text($heading['time_of_day'] ?? null, 'heading.time_of_day', 100);
-                    $scene['heading'] = trim("$prefix $place" . ($time ? " - $time" : ''));
-                    $scene += ['location' => $place, 'int_ext' => $prefix, 'time_of_day' => $time];
-                }
                 $scene['blocks'] = array_map(static function ($block) {
                     return is_array($block) ? $block + ['id' => Uuid::v4(), 'speaker_id' => $block['speaker'] ?? null] : $block;
                 }, self::list($scene['blocks'] ?? [], 'blocks'));
@@ -171,6 +204,14 @@ final class ProjectDocument
                     $item['episode_id'] = self::reference($row['episode_id'] ?? null, $lookup['episodes'], "$path.episode_id");
                 }
                 if ($kind === 'scenes') {
+                    if (is_array($row['heading'] ?? null)) {
+                        $heading = $row['heading'];
+                        $place = self::text($heading['location'] ?? null, "$path.heading.location", 255);
+                        $prefix = self::text($heading['int_ext'] ?? null, "$path.heading.int_ext", 15);
+                        $time = self::text($heading['time_of_day'] ?? null, "$path.heading.time_of_day", 100);
+                        $row['heading'] = trim("$prefix $place" . ($time ? " - $time" : ''));
+                        $row += ['location' => $place, 'int_ext' => $prefix, 'time_of_day' => $time];
+                    }
                     $item['act_id'] = self::reference($row['act_id'] ?? null, $lookup['acts'], "$path.act_id");
                     if ($item['act_id'] !== null && ($parent = $lookup['acts'][$item['act_id']]['episode_id']) !== null && $parent !== $item['episode_id']) {
                         throw new RuntimeException("$path must belong to the selected act's episode.");

@@ -41,3 +41,36 @@ Scriptises exports UTF-8 JSON with `schema_version` set to `"1.0.0"`. Download a
 - Backups exclude account data, server settings, history, original import files, and browser-local drafts. Keep complete backups in a private location.
 
 JSON uploads are capped at 8 MB or the configured PHP upload limit, whichever is lower. Paste input is capped at 2 MB. Keep PHP's `post_max_size` above `upload_max_filesize` to allow room for review submissions and the form envelope.
+
+## Add an act or scene to an existing project
+
+Open the project and select **Import act or scene**. Upload a JSON file, review it, and choose where to place it. **Project outline** keeps the source structure. Choose an episode to add acts or scenes to that episode, or choose an act to append scenes inside that act. Scriptises keeps the project's existing content and reuses characters with matching names.
+
+A standalone scene can use this format.
+
+```json
+{
+  "heading": "INT. STUDY - NIGHT",
+  "blocks": [
+    { "type": "action", "text": "Mara closes the door." }
+  ]
+}
+```
+
+An act can contain a list of scenes.
+
+```json
+{
+  "title": "Act 2",
+  "scenes": [
+    {
+      "heading": "EXT. ROAD - DAWN",
+      "blocks": [
+        { "type": "action", "text": "A car disappears into the fog." }
+      ]
+    }
+  ]
+}
+```
+
+You can also use a top-level `scenes` or `acts` list, or upload a Scriptises JSON export. Section files can omit project details, the schema version, and unreferenced IDs. To import dialogue with a speaker, include a top-level `characters` list and set the dialogue block's `speaker_id` to the corresponding character ID.

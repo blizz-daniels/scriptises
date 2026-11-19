@@ -93,6 +93,24 @@ try {
     check($new['scene_character_links'][0]['notes'] === 'Outside the ward' && count($new['characters'][0]['aliases']) === 2, 'appearance notes and aliases round trip');
     $transfer->restore($user, $backup, $json, 'json', $uuid);
     check(count($transfer->backup($user, $uuid)['scenes']) === 6 && count($transfer->backup($user, $uuid)['characters']) === 1, 'append retains scenes and reuses matching characters');
+    $defaults = ['title' => $project['project']['title']];
+    $actJson = '{"title":"Act 2","scenes":[{"heading":"EXT. ROAD - DAWN","blocks":[{"type":"action","text":"A car pulls away."}]}]}';
+    $actDocument = ProjectDocument::decode($actJson, $defaults);
+    $transfer->restore($user, $actDocument, $actJson, 'json', $uuid, 'episode:' . $episode['uuid']);
+    $withAct = $transfer->backup($user, $uuid);
+    $addedAct = array_column($withAct['acts'], null, 'title')['Act 2'];
+    check($addedAct['episode_id'] === $episode['uuid'] && count($withAct['episodes']) === 2, 'new act joins an existing episode');
+
+    $sceneJson = '{"heading":"INT. CAR - DAWN","characters":[{"id":"driver","name":"AYODELE"}],"blocks":[{"type":"dialogue","text":"We are late.","speaker_id":"driver"}]}';
+    $sceneDocument = ProjectDocument::decode($sceneJson, $defaults);
+    rejected(fn () => $transfer->restore($user, $sceneDocument, $sceneJson, 'json', $uuid, 'act:' . $new['acts'][0]['id']), 'no longer available');
+    $transfer->restore($user, $sceneDocument, $sceneJson, 'json', $uuid, 'act:' . $addedAct['id']);
+    $transfer->restore($user, ProjectDocument::validate($partial), $json, 'json', $uuid, 'act:' . $addedAct['id']);
+    $updated = $transfer->backup($user, $uuid);
+    $addedScenes = array_values(array_filter($updated['scenes'], fn ($row) => $row['act_id'] === $addedAct['id']));
+    check(count($addedScenes) === 3 && count($updated['scenes']) === 9 && count($updated['acts']) === 3, 'section imports append without duplicating the destination act or losing existing scenes');
+    check($addedScenes[1]['heading'] === 'INT. CAR - DAWN' && $addedScenes[1]['episode_id'] === $episode['uuid'], 'standalone scene follows the previous scene and inherits its act episode');
+    check($addedScenes[1]['blocks'][0]['speaker_id'] === $person['uuid'] && count($updated['characters']) === 1, 'section dialogue reuses an existing character');
     rejected(fn () => ProjectDocument::decode('{broken'), 'Invalid JSON');
     $bad = $backup;
     $bad['scenes'][0]['blocks'][2]['speaker_id'] = 'missing';

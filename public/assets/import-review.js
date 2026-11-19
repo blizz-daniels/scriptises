@@ -142,10 +142,10 @@
   function render() {
     editor.replaceChildren();
     editor.className = 'form-stack';
-    editor.append(
-      textInput('Project title', draft.project.title, (value) => { draft.project.title = value; }),
-      divisionControls()
-    );
+    if (!form.hasAttribute('data-project-import')) {
+      editor.append(textInput('Project title', draft.project.title, (value) => { draft.project.title = value; }));
+    }
+    editor.append(divisionControls());
     const scene = draft.scenes.find(item => item.id === selected) || draft.scenes[0];
     const actions = element('div');
     actions.className = 'page-actions';
