@@ -10,6 +10,7 @@ $flash = \App\Support\Flash::pull();
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?= $e(\App\Support\Csrf::token()) ?>">
     <title><?= $e($pageTitle ?? 'Scriptises') ?> · Scriptises</title>
+    <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
@@ -17,16 +18,22 @@ $flash = \App\Support\Flash::pull();
 <header class="topbar">
     <div class="topbar-inner">
         <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">S</span>Scriptises</a>
-        <?php if (!empty($user)): ?>
-            <nav class="topnav" aria-label="Main navigation">
-                <a href="/">Projects</a>
-                <span class="account" title="<?= $e($user['email']) ?>"><?= $e($user['email']) ?></span>
-                <form method="post" action="/logout">
-                    <input type="hidden" name="_csrf" value="<?= $e(\App\Support\Csrf::token()) ?>">
-                    <button class="quiet" type="submit">Sign out</button>
-                </form>
-            </nav>
-        <?php endif; ?>
+        <div class="header-actions">
+            <?php if (!empty($user)): ?>
+                <nav class="topnav" aria-label="Main navigation">
+                    <a href="/">Projects</a>
+                    <span class="account" title="<?= $e($user['email']) ?>"><?= $e($user['email']) ?></span>
+                    <form method="post" action="/logout">
+                        <input type="hidden" name="_csrf" value="<?= $e(\App\Support\Csrf::token()) ?>">
+                        <button class="quiet" type="submit">Sign out</button>
+                    </form>
+                </nav>
+            <?php endif; ?>
+            <button class="theme-toggle" type="button" data-theme-toggle hidden>
+                <span class="theme-icon" aria-hidden="true"></span>
+                <span class="theme-label">Dark mode</span>
+            </button>
+        </div>
     </div>
 </header>
 <?php if ($flash): ?>

@@ -7,7 +7,11 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use App\Controllers\ApiController;
 use App\Controllers\AuthController;
 use App\Controllers\ProjectController;
+use App\Controllers\ManagementController;
+use App\Controllers\TransferController;
 use App\Services\AuthService;
+use App\Services\ManagementService;
+use App\Services\ProjectTransfer;
 use App\Services\ScreenplayService;
 use App\Support\Flash;
 use App\Support\Http;
@@ -15,8 +19,11 @@ use App\Support\View;
 
 $auth = new AuthService($database);
 $screenplays = new ScreenplayService($database);
+$management = new ManagementService($database, $screenplays);
+$managementController = new ManagementController($auth, $screenplays, $management);
+$transferController = new TransferController($auth, $screenplays, $management, new ProjectTransfer($database, $screenplays, $management));
 $authController = new AuthController($auth);
-$projectController = new ProjectController($auth, $screenplays);
+$projectController = new ProjectController($auth, $screenplays, $management);
 $apiController = new ApiController($auth, $screenplays);
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 $path = Http::path();
@@ -29,6 +36,28 @@ try {
     if ($method === 'POST' && $path === '/login') { $authController->login(); exit; }
     if ($method === 'POST' && $path === '/logout') { $authController->logout(); exit; }
     if ($method === 'POST' && $path === '/projects') { $projectController->createProject(); exit; }
+    if ($method === 'GET' && $path === '/import') { $transferController->show(); exit; }
+    if ($method === 'GET' && $path === '/import/source') { $transferController->original(); exit; }
+    if ($method === 'POST' && $path === '/import/stage') { $transferController->stage(); exit; }
+    if ($method === 'POST' && $path === '/import/confirm') { $transferController->confirm(); exit; }
+    if ($method === 'POST' && $path === '/import/cancel') { $transferController->cancel(); exit; }
+
+    if ($method === 'GET' && preg_match('#^/projects/([a-f0-9-]{36})/(search|characters)$#i', $path, $matches)) {
+        $managementController->find($matches[1], $matches[2] === 'characters'); exit;
+    }
+    if (preg_match('#^/projects/([a-f0-9-]{36})/plots$#i', $path, $matches)) {
+        if ($method === 'GET') { $managementController->plots($matches[1]); exit; }
+        if ($method === 'POST') { $managementController->savePlot($matches[1]); exit; }
+    }
+    if ($method === 'POST' && preg_match('#^/projects/([a-f0-9-]{36})/plots/([a-f0-9-]{36})/delete$#i', $path, $matches)) { $managementController->deletePlot($matches[1], $matches[2]); exit; }
+    if ($method === 'POST' && preg_match('#^/projects/([a-f0-9-]{36})/characters/([a-f0-9-]{36})$#i', $path, $matches)) { $managementController->saveCharacter($matches[1], $matches[2]); exit; }
+    if ($method === 'POST' && preg_match('#^/projects/([a-f0-9-]{36})/scenes/([a-f0-9-]{36})/characters$#i', $path, $matches)) { $managementController->linkCharacter($matches[1], $matches[2]); exit; }
+    if (preg_match('#^/projects/([a-f0-9-]{36})/blocks/([a-f0-9-]{36})/history$#i', $path, $matches)) {
+        if ($method === 'GET') { $managementController->history($matches[1], $matches[2]); exit; }
+        if ($method === 'POST') { $managementController->restoreBlock($matches[1], $matches[2]); exit; }
+    }
+    if ($method === 'GET' && preg_match('#^/projects/([a-f0-9-]{36})/export$#i', $path, $matches)) { $transferController->export($matches[1]); exit; }
+    if ($method === 'GET' && preg_match('#^/projects/([a-f0-9-]{36})/imports/(\d+)$#i', $path, $matches)) { $transferController->source($matches[1], (int) $matches[2]); exit; }
 
     if (preg_match('#^/projects/([a-f0-9-]{36})$#i', $path, $matches)) {
         if ($method === 'GET') { $projectController->workspace($matches[1]); exit; }

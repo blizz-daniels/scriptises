@@ -60,14 +60,23 @@ final class ScreenplayService
     /** @return array{project:array<string,mixed>, episodes:list<array<string,mixed>>, acts:list<array<string,mixed>>, scenes:list<array<string,mixed>>, characters:list<array<string,mixed>>, recentRevisions:list<array<string,mixed>>} */
     public function workspace(int $userId, string $projectUuid): array
     {
+        $catalog = $this->catalog($userId, $projectUuid);
+        $projectId = (int) $catalog['project']['id'];
+        $pdo = $this->database->pdo();
+        $scenes = $this->rows($pdo->prepare('SELECT s.* FROM scenes s LEFT JOIN episodes e ON e.id = s.episode_id LEFT JOIN acts a ON a.id = s.act_id WHERE s.project_id = ? ORDER BY s.episode_id IS NULL DESC, e.position, s.act_id IS NULL DESC, a.position, s.position, s.id'), [$projectId]);
+        $recentRevisions = $this->rows($pdo->prepare('SELECT entity_type, action, created_at FROM revisions WHERE project_id = ? ORDER BY id DESC LIMIT 12'), [$projectId]);
+        return $catalog + compact('scenes', 'recentRevisions');
+    }
+
+    public function catalog(int $userId, string $projectUuid): array
+    {
         $project = $this->project($userId, $projectUuid);
         $pdo = $this->database->pdo();
-        $episodes = $this->rows($pdo->prepare('SELECT * FROM episodes WHERE project_id = ? ORDER BY position, id'), [(int) $project['id']]);
-        $acts = $this->rows($pdo->prepare('SELECT * FROM acts WHERE project_id = ? ORDER BY episode_id IS NULL DESC, episode_id, position, id'), [(int) $project['id']]);
-        $scenes = $this->rows($pdo->prepare('SELECT * FROM scenes WHERE project_id = ? ORDER BY episode_id IS NULL DESC, episode_id, act_id IS NULL DESC, act_id, position, id'), [(int) $project['id']]);
-        $characters = $this->rows($pdo->prepare('SELECT * FROM characters WHERE project_id = ? ORDER BY name'), [(int) $project['id']]);
-        $recentRevisions = $this->rows($pdo->prepare('SELECT entity_type, action, created_at FROM revisions WHERE project_id = ? ORDER BY id DESC LIMIT 12'), [(int) $project['id']]);
-        return compact('project', 'episodes', 'acts', 'scenes', 'characters', 'recentRevisions');
+        $params = [(int) $project['id']];
+        $episodes = $this->rows($pdo->prepare('SELECT * FROM episodes WHERE project_id = ? ORDER BY position, id'), $params);
+        $acts = $this->rows($pdo->prepare('SELECT a.* FROM acts a LEFT JOIN episodes e ON e.id = a.episode_id WHERE a.project_id = ? ORDER BY a.episode_id IS NULL DESC, e.position, a.position, a.id'), $params);
+        $characters = $this->rows($pdo->prepare('SELECT * FROM characters WHERE project_id = ? ORDER BY name'), $params);
+        return compact('project', 'episodes', 'acts', 'characters');
     }
 
     public function updateProject(int $userId, string $projectUuid, string $title, string $type, ?string $description): void
@@ -249,6 +258,8 @@ final class ScreenplayService
             $pdo->prepare('INSERT INTO scenes (uuid, project_id, episode_id, act_id, position, heading, int_ext, location, time_of_day, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
                 ->execute([$newUuid, $project['id'], $scene['episode_id'], $scene['act_id'], $position, $scene['heading'] . ' (Copy)', $scene['int_ext'], $scene['location'], $scene['time_of_day'], $scene['summary']]);
             $newSceneId = (int) $pdo->lastInsertId();
+            $pdo->prepare('INSERT INTO scene_characters (scene_id, character_id, association_type, notes) SELECT ?, character_id, association_type, notes FROM scene_characters WHERE scene_id = ?')
+                ->execute([$newSceneId, $scene['id']]);
             $blocks = $this->rows($pdo->prepare('SELECT * FROM content_blocks WHERE scene_id = ? ORDER BY position'), [(int) $scene['id']]);
             foreach ($blocks as $block) {
                 $pdo->prepare('INSERT INTO content_blocks (uuid, scene_id, position, block_type, content, speaker_character_id, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -285,10 +296,6 @@ final class ScreenplayService
     public function updateBlock(int $userId, string $projectUuid, string $blockUuid, array $changes, ?int $version): array
     {
         $project = $this->project($userId, $projectUuid);
-        $block = $this->block($project, $blockUuid);
-        if ($version !== null && $version !== (int) $block['lock_version']) {
-            throw new RuntimeException('This block changed in another tab. Reload it before saving.');
-        }
         $field = array_key_first($changes);
         if (!in_array($field, ['content', 'block_type', 'speaker_uuid'], true)) {
             throw new RuntimeException('That block field cannot be updated.');
@@ -297,10 +304,21 @@ final class ScreenplayService
         $pdo = $this->database->pdo();
         $pdo->beginTransaction();
         try {
+            $lock = $pdo->prepare('SELECT b.id FROM content_blocks b JOIN scenes s ON s.id = b.scene_id WHERE b.uuid = ? AND s.project_id = ? FOR UPDATE');
+            $lock->execute([$blockUuid, $project['id']]);
+            $lock->fetchColumn();
+            $block = $this->block($project, $blockUuid);
+            if ($version !== null && $version !== (int) $block['lock_version']) {
+                throw new RuntimeException('This block changed in another tab. Reload it before saving.');
+            }
             if ($field === 'content') {
                 $value = (string) $changes['content'];
                 if (mb_strlen($value) > 200000) {
                     throw new RuntimeException('A content block cannot exceed 200,000 characters.');
+                }
+                if ($value === $block['content']) {
+                    $pdo->commit();
+                    return $block;
                 }
                 $pdo->prepare('UPDATE content_blocks SET content = ?, lock_version = lock_version + 1 WHERE id = ?')->execute([$value, $block['id']]);
             } elseif ($field === 'block_type') {
@@ -315,13 +333,46 @@ final class ScreenplayService
             }
             $this->touchProject((int) $project['id']);
             $updated = $this->block($project, $blockUuid);
-            $this->revision((int) $project['id'], $userId, 'block', $blockUuid, 'updated', [$field => $changes[$field]]);
+            $this->revision((int) $project['id'], $userId, 'block', $blockUuid, 'updated', [
+                $field => $changes[$field],
+                'previous' => $block[$field] ?? null,
+            ]);
             $pdo->commit();
             return $updated;
         } catch (\Throwable $exception) {
             $pdo->rollBack();
             throw $exception;
         }
+    }
+
+    public function blockHistory(int $userId, string $projectUuid, string $blockUuid): array
+    {
+        $project = $this->project($userId, $projectUuid);
+        $block = $this->block($project, $blockUuid);
+        $rows = $this->rows($this->database->pdo()->prepare(
+            "SELECT id, created_at, payload FROM revisions
+             WHERE project_id = ? AND entity_type = 'block' AND entity_uuid = ? AND action = 'updated'
+             AND JSON_CONTAINS_PATH(payload, 'one', '$.content') ORDER BY id DESC LIMIT 40"
+        ), [$project['id'], $blockUuid]);
+        foreach ($rows as &$row) {
+            $payload = json_decode($row['payload'], true, 64, JSON_THROW_ON_ERROR);
+            $row['text'] = $payload['previous'] ?? $payload['content'];
+            $row['label'] = array_key_exists('previous', $payload) ? 'Before edit' : 'Saved version';
+            unset($row['payload']);
+        }
+        return ['project' => $project, 'block' => $block, 'history' => $rows, 'scene' => $this->uuidForId('scenes', (int) $block['scene_id'])];
+    }
+
+    public function restoreBlock(int $userId, string $projectUuid, string $blockUuid, int $revisionId, int $version): void
+    {
+        $timeline = $this->blockHistory($userId, $projectUuid, $blockUuid);
+        foreach ($timeline['history'] as $entry) {
+            if ((int) $entry['id'] === $revisionId) {
+                $this->updateBlock($userId, $projectUuid, $blockUuid, ['content' => $entry['text']], $version);
+                return;
+            }
+        }
+        throw new RuntimeException('That version is no longer available.');
     }
 
     public function deleteBlock(int $userId, string $projectUuid, string $blockUuid): void

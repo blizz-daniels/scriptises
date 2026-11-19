@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Services\ScreenplayService;
+use App\Services\ManagementService;
 use App\Support\Flash;
 use App\Support\Http;
 use App\Support\View;
 
 final class ProjectController extends BaseController
 {
-    public function __construct(\App\Services\AuthService $auth, private readonly ScreenplayService $screenplays)
-    {
+    public function __construct(
+        \App\Services\AuthService $auth,
+        private readonly ScreenplayService $screenplays,
+        private readonly ManagementService $management
+    ) {
         parent::__construct($auth);
     }
 
@@ -41,6 +45,10 @@ final class ProjectController extends BaseController
         $data = $this->screenplays->workspace((int) $user['id'], $projectUuid);
         $data['pageTitle'] = $data['project']['title'];
         $data['user'] = $user;
+        $data['imports'] = $this->management->rows(
+            'SELECT id, source_type, created_at FROM import_records WHERE project_id = ? ORDER BY id DESC LIMIT 20',
+            [$data['project']['id']]
+        );
         View::render('workspace', $data);
     }
 
@@ -103,6 +111,7 @@ final class ProjectController extends BaseController
         $data = $this->screenplays->sceneEditor((int) $user['id'], $projectUuid, $sceneUuid);
         $data['pageTitle'] = $data['scene']['heading'] ?: 'Scene editor';
         $data['user'] = $user;
+        $data['sceneCharacters'] = $this->management->sceneCharacters((int) $data['project']['id'], $sceneUuid);
         View::render('editor', $data);
     }
 
