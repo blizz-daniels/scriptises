@@ -18,6 +18,9 @@ final class ProjectDocument
             throw new RuntimeException('Choose a JSON backup under 8 MB.');
         }
         try {
+            if (str_starts_with($source, "\xEF\xBB\xBF")) {
+                $source = substr($source, 3);
+            }
             $document = self::unpack(json_decode($source, false, 64, JSON_THROW_ON_ERROR));
         } catch (\JsonException $error) {
             throw new RuntimeException('Invalid JSON: ' . $error->getMessage());

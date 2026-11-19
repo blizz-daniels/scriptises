@@ -199,19 +199,21 @@ final class ScreenplayService
     public function updateScene(int $userId, string $projectUuid, string $sceneUuid, array $changes, ?int $version = null): array
     {
         $project = $this->project($userId, $projectUuid);
-        $scene = $this->recordForProject('scenes', $sceneUuid, (int) $project['id']);
         $allowed = ['heading', 'int_ext', 'location', 'time_of_day', 'summary', 'episode_uuid', 'act_uuid'];
         $field = array_key_first($changes);
         if (!is_string($field) || !in_array($field, $allowed, true)) {
             throw new RuntimeException('That scene field cannot be updated.');
         }
-        if ($version !== null && $version !== (int) $scene['lock_version']) {
-            throw new RuntimeException('This scene changed in another tab. Reload it before saving.');
-        }
-
         $pdo = $this->database->pdo();
         $pdo->beginTransaction();
         try {
+            $lock = $pdo->prepare('SELECT id FROM scenes WHERE uuid = ? AND project_id = ? FOR UPDATE');
+            $lock->execute([$sceneUuid, $project['id']]);
+            $lock->fetchColumn();
+            $scene = $this->recordForProject('scenes', $sceneUuid, (int) $project['id']);
+            if ($version !== null && $version !== (int) $scene['lock_version']) {
+                throw new RuntimeException('This scene changed in another tab. Reload it before saving.');
+            }
             if (in_array($field, ['episode_uuid', 'act_uuid'], true)) {
                 $episodeUuid = $field === 'episode_uuid' ? (string) $changes[$field] : ($scene['episode_id'] ? $this->uuidForId('episodes', (int) $scene['episode_id']) : null);
                 $actUuid = $field === 'act_uuid' ? (string) $changes[$field] : ($scene['act_id'] ? $this->uuidForId('acts', (int) $scene['act_id']) : null);

@@ -14,8 +14,12 @@
   const preserveDraft = (element) => {
     try { localStorage.setItem(draftKey(element), JSON.stringify({ value: valueOf(element), savedAt: Date.now() })); } catch (_) {}
   };
-  const clearDraft = (element) => {
-    try { localStorage.removeItem(draftKey(element)); } catch (_) {}
+  const clearDraft = (element, savedValue) => {
+    try {
+      const key = draftKey(element);
+      const draft = JSON.parse(localStorage.getItem(key) || 'null');
+      if (draft?.value === savedValue) localStorage.removeItem(key);
+    } catch (_) {}
   };
   const setStatus = (text, kind = '') => {
     if (!status) return;
@@ -54,6 +58,7 @@
     dirty.add(element);
     inFlight.add(element);
     setStatus('Saving…', 'saving');
+    let saved = false;
     try {
       const response = await fetch(endpoint, {
         method: 'PATCH',
@@ -64,12 +69,16 @@
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || 'Unable to save this change.');
       setVersions(endpoint, data.version);
-      dirty.delete(element);
-      clearDraft(element);
-      element.dataset.lastValue = value;
+      saved = true;
+      element.classList.remove('save-error');
+      if (valueOf(element) === value) {
+        dirty.delete(element);
+        clearDraft(element, value);
+      } else {
+        queueSave(element, 0);
+      }
       toggleSpeaker(element);
       setStatus(dirty.size ? 'Unsaved changes' : 'Saved', dirty.size ? 'dirty' : 'saved');
-      if (valueOf(element) !== value) queueSave(element, 0);
     } catch (error) {
       dirty.add(element);
       element.classList.add('save-error');
@@ -77,9 +86,11 @@
     } finally {
       inFlight.delete(element);
       endpointLocks.delete(endpoint);
-      document.querySelectorAll(`[data-autosave][data-endpoint="${CSS.escape(endpoint)}"]`).forEach((other) => {
-        if (other !== element && dirty.has(other)) queueSave(other, 0);
-      });
+      if (saved) {
+        document.querySelectorAll(`[data-autosave][data-endpoint="${CSS.escape(endpoint)}"]`).forEach((other) => {
+          if (other !== element && dirty.has(other)) queueSave(other, 0);
+        });
+      }
     }
   };
   const queueSave = (element, delay = 650) => {

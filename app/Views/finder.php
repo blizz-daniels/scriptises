@@ -89,6 +89,7 @@ $highlight = static function (string $text) use ($e, $filters): string {
             <?php if ($context !== ''): ?><div class="muted"><?= $highlight($context) ?></div><?php endif; ?>
             <?php if ($block): ?>
                 <p class="nav-label"><?= $e(ucfirst($row['block_type'])) ?><?= $row['speaker'] ? ' · ' . $highlight($row['speaker']) : '' ?></p>
+                <?php if ($characterView && $row['previous_text']): ?><p class="muted previous-text">Previous block · <?= $e($row['previous_text']) ?></p><?php endif; ?>
                 <?php if ($filters['q'] !== '' && mb_stripos($row['content'], $filters['q']) !== false): ?>
                     <?php $offset = max(0, mb_stripos($row['content'], $filters['q']) - 45); ?>
                     <p class="match-preview"><?= $offset ? '…' : '' ?><?= $highlight(mb_substr($row['content'], $offset, 345)) ?></p>

@@ -36,7 +36,12 @@ final class ManagementService
         $joinBlocks = $blocks
             ? 'JOIN content_blocks b ON b.scene_id = s.id LEFT JOIN characters c ON c.id = b.speaker_character_id'
             : '';
-        $blockFields = $blocks ? ', b.uuid AS block_uuid, b.block_type, b.content, b.lock_version AS block_version, c.name AS speaker' : '';
+        $blockFields = $blocks ? ', b.uuid AS block_uuid' : '';
+        if ($blocks && !$all) {
+            $blockFields .= ', b.block_type, b.content, b.lock_version AS block_version, c.name AS speaker,
+                (SELECT LEFT(previous.content, 200) FROM content_blocks previous
+                 WHERE previous.scene_id = s.id AND previous.position < b.position ORDER BY previous.position DESC LIMIT 1) AS previous_text';
+        }
         $conditions = ['s.project_id = ?'];
         $params = [$project['id']];
         foreach (['episode' => 'e.uuid', 'act' => 'a.uuid'] as $filter => $column) {
@@ -49,8 +54,11 @@ final class ManagementService
             $conditions[] = 'EXISTS (SELECT 1 FROM plot_scenes ps JOIN plot_threads p ON p.id = ps.plot_id WHERE ps.entity_id = s.id AND p.project_id = s.project_id AND p.uuid = ?)';
             $params[] = $filters['plot'];
         }
-        if ($blocks && in_array($filters['type'] ?? '', self::BLOCK_TYPES, true)) {
-            $conditions[] = 'b.block_type = ?';
+        $type = $filters['type'] ?? '';
+        if (in_array($type, self::BLOCK_TYPES, true)) {
+            $conditions[] = $blocks
+                ? 'b.block_type = ?'
+                : 'EXISTS (SELECT 1 FROM content_blocks typed WHERE typed.scene_id = s.id AND typed.block_type = ?)';
             $params[] = $filters['type'];
         }
         if (!empty($filters['character'])) {
@@ -92,13 +100,18 @@ final class ManagementService
             $term = $this->contains($filters['q']);
             array_push($params, ...array_fill(0, count($matches), $term));
             if (!$blocks) {
-                $matches[] = "EXISTS (SELECT 1 FROM content_blocks cb LEFT JOIN characters sp ON sp.id = cb.speaker_character_id WHERE cb.scene_id = s.id AND (cb.content LIKE ? ESCAPE '!' OR sp.name LIKE ? ESCAPE '!'))";
-                array_push($params, $term, $term);
-                $matches[] = "EXISTS (SELECT 1 FROM content_blocks cb JOIN character_aliases ca ON ca.character_id = cb.speaker_character_id WHERE cb.scene_id = s.id AND ca.alias LIKE ? ESCAPE '!')";
+                $typeClause = in_array($type, self::BLOCK_TYPES, true) ? ' AND cb.block_type = ?' : '';
+                $matches[] = "EXISTS (SELECT 1 FROM content_blocks cb LEFT JOIN characters sp ON sp.id = cb.speaker_character_id
+                    LEFT JOIN character_aliases ca ON ca.character_id = sp.id
+                    WHERE cb.scene_id = s.id $typeClause AND (cb.content LIKE ? ESCAPE '!' OR sp.name LIKE ? ESCAPE '!' OR ca.alias LIKE ? ESCAPE '!'))";
+                if ($typeClause !== '') {
+                    $params[] = $type;
+                }
+                array_push($params, $term, $term, $term);
             } else {
                 $matches[] = "EXISTS (SELECT 1 FROM character_aliases ca WHERE ca.character_id = b.speaker_character_id AND ca.alias LIKE ? ESCAPE '!')";
+                $params[] = $term;
             }
-            $params[] = $term;
             $matches[] = "EXISTS (SELECT 1 FROM scene_characters sc JOIN characters person ON person.id = sc.character_id LEFT JOIN character_aliases ca ON ca.character_id = person.id WHERE sc.scene_id = s.id AND (person.name LIKE ? ESCAPE '!' OR ca.alias LIKE ? ESCAPE '!'))";
             array_push($params, $term, $term);
             $matches[] = "EXISTS (SELECT 1 FROM plot_scenes ps JOIN plot_threads pt ON pt.id = ps.plot_id WHERE ps.entity_id = s.id AND pt.title LIKE ? ESCAPE '!')";

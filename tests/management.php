@@ -65,6 +65,7 @@ try {
     check(count($speech) === 1 && $speech[0]['content'] === 'We can pay 50%.', 'literal phrase, scoped character and plot search');
     check(count($management->search($user, $uuid, ['q' => 'Ayo Jr.', 'relation' => 'dialogue', 'character' => $person['uuid']])) === 1, 'alias search');
     check(count($management->search($user, $uuid, ['character' => $person['uuid'], 'relation' => 'mentioned', 'view' => 'scenes'])) === 1, 'action mention stays separate');
+    check(count($management->search($user, $uuid, ['q' => 'pay', 'type' => 'action', 'view' => 'scenes'])) === 0, 'scene search respects the requested block type');
     check($management->search($user, $uuid, ['character' => $person['uuid'], 'relation' => 'associated', 'view' => 'scenes', 'location' => 'Hospital'])[0]['scene_uuid'] === $location['uuid'], 'explicit appearance and location');
     $management->saveCharacter($user, $uuid, $person['uuid'], 'AYODELE', 'Student', "Ay\nAyo Jr.");
     $line = $speech[0];
@@ -107,6 +108,21 @@ try {
     } catch (PDOException) {
         check(count($scripts->projectsForUser($user)) === $count, 'failed transaction does not leave a new project');
     }
+
+    $large = ['schema_version' => ProjectDocument::VERSION, 'project' => ['title' => 'Long screenplay'], 'scenes' => []];
+    for ($sceneIndex = 1; $sceneIndex <= 320; $sceneIndex++) {
+        $blocks = [];
+        for ($blockIndex = 1; $blockIndex <= 10; $blockIndex++) {
+            $blocks[] = ['id' => "block-$sceneIndex-$blockIndex", 'type' => 'action', 'text' => "Long screenplay page $sceneIndex, line $blockIndex"];
+        }
+        $large['scenes'][] = ['id' => "scene-$sceneIndex", 'heading' => "INT. TEST ROOM $sceneIndex - NIGHT", 'blocks' => $blocks];
+    }
+    $largeUuid = $transfer->restore($user, $large, 'Test fixture', 'json');
+    $pageOne = $management->search($user, $largeUuid, ['q' => 'Long screenplay page']);
+    $pageTwo = $management->search($user, $largeUuid, ['q' => 'Long screenplay page', 'page' => 2]);
+    check(count($pageOne) === 31 && count($pageTwo) === 31, 'long screenplay results are paginated');
+    check($pageOne[30]['block_uuid'] === $pageTwo[0]['block_uuid'], 'lookahead and next page follow the same stable ordering');
+    check(count($transfer->backup($user, $largeUuid)['scenes']) === 320, 'large backup retains all scenes');
     echo "Management workflow passed.\n";
 } finally {
     foreach ($scripts->projectsForUser($user, true) as $project) {

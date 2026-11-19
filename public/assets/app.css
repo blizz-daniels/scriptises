@@ -634,6 +634,7 @@ summary { cursor: pointer; font-weight: 650; overflow-wrap: anywhere; }
 .selection-check { display: flex; align-items: center; gap: .4rem; overflow-wrap: anywhere; }
 .selection-check input[type="checkbox"] { width: 1rem; min-height: 1rem; height: 1rem; flex: none; accent-color: var(--accent); }
 .match-preview { color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: .5rem; }
+.previous-text { font-size: .88rem; overflow-wrap: anywhere; }
 mark { color: #2d261e; background: #e9d29f; border-radius: .2rem; }
 .writing-text { font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .profile-panel { margin-bottom: 1rem; }

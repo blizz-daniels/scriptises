@@ -75,6 +75,20 @@
       group.className = 'form-stack compact';
       draft[kind].forEach((row) => {
         group.append(textInput(name[0].toUpperCase() + name.slice(1), row[property], (value) => { row[property] = value; }));
+        if (kind === 'characters') group.append(button('Remove ' + row.name, () => {
+          if (!window.confirm('Remove this character and leave their dialogue unassigned?')) return;
+          draft.characters = draft.characters.filter(item => item.id !== row.id);
+          for (const scene of draft.scenes) {
+            scene.blocks.filter(block => block.speaker_id === row.id).forEach(block => { block.speaker_id = null; });
+          }
+          draft.scene_character_links = draft.scene_character_links.filter(link => link.character_id !== row.id);
+          for (const plot of draft.plot_threads) {
+            plot.characters = plot.characters.filter(ref => ref !== row.id);
+          }
+          saveDraft();
+          render();
+          editor.querySelector('details').open = true;
+        }));
         if (kind === 'acts') group.append(picker('Act episode', [['', 'None'], ...options(draft.episodes, 'title')], row.episode_id, (value) => {
           row.episode_id = value || null;
           draft.scenes.filter(scene => scene.act_id === row.id).forEach(scene => { scene.episode_id = value || null; });
