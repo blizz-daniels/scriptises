@@ -1,3 +1,4 @@
 /vendor/
 /storage/pdf-cache/
 /storage/logs/*.log
+/config/config.hosted.php

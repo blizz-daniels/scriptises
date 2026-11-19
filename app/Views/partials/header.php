@@ -10,6 +10,7 @@ $flash = \App\Support\Flash::pull();
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?= $e(\App\Support\Csrf::token()) ?>">
     <title><?= $e($pageTitle ?? 'Scriptises') ?> · Scriptises</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
     <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/app.css">
     <?php if (!empty($pageStylesheet)): ?><link rel="stylesheet" href="<?= $e($pageStylesheet) ?>"><?php endif; ?>
