@@ -1,0 +1,20 @@
+<?php
+
+declare(strict_types=1);
+
+// Copy or adapt config.php only for non-secret defaults. Use environment
+// variables (DB_PASSWORD, DB_USER, and so on) for credentials.
+return [
+    'app_name' => 'Scriptises',
+    'app_url' => '',
+    'debug' => false,
+    'session_name' => 'scriptises_session',
+    'database' => [
+        'host' => '127.0.0.1',
+        'port' => 3306,
+        'name' => 'scriptises',
+        'user' => 'root',
+        'password' => '',
+        'charset' => 'utf8mb4',
+    ],
+];

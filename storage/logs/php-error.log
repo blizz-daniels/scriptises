@@ -1,0 +1,5 @@
+[19-Nov-2026 12:39:58 UTC] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`scriptises`.`scenes`, CONSTRAINT `fk_scenes_project` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE) in C:\laragon\www\scriptises\tests\integration.php:51
+Stack trace:
+#0 C:\laragon\www\scriptises\tests\integration.php(51): PDOStatement->execute(Array)
+#1 {main}
+  thrown in C:\laragon\www\scriptises\tests\integration.php on line 51
