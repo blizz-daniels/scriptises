@@ -43,10 +43,12 @@ final class PdfController extends BaseController
                 $html = $this->pdf->html($document);
                 $summary = $document['label'] . ' · ' . count($document['scenes']) . (count($document['scenes']) === 1 ? ' scene' : ' scenes');
                 $token = bin2hex(random_bytes(24));
-                $_SESSION[self::PREVIEW] = [
-                    'project' => $uuid, 'token' => $token, 'options' => $options,
+                $previews = array_filter($_SESSION[self::PREVIEW] ?? [], static fn ($preview) => is_array($preview) && ($preview['expires'] ?? 0) >= time());
+                $previews[$token] = [
+                    'project' => $uuid, 'options' => $options,
                     'digest' => hash('sha256', $html), 'expires' => time() + 1800,
                 ];
+                $_SESSION[self::PREVIEW] = array_slice($previews, -5, null, true);
             } catch (RuntimeException $failure) {
                 if ($failure instanceof \PDOException) {
                     throw $failure;
@@ -66,8 +68,8 @@ final class PdfController extends BaseController
     {
         $user = $this->user();
         $this->csrf();
-        $preview = $_SESSION[self::PREVIEW] ?? null;
-        if (!$preview || $preview['project'] !== $uuid || $preview['expires'] < time() || !hash_equals($preview['token'], $this->requestText('preview'))) {
+        $preview = $_SESSION[self::PREVIEW][$this->requestText('preview')] ?? null;
+        if (!$preview || $preview['project'] !== $uuid || $preview['expires'] < time()) {
             Flash::set('error', 'Create a fresh preview before downloading the PDF.');
             Http::redirect("/projects/$uuid/pdf");
         }

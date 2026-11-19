@@ -135,7 +135,7 @@ try {
     $saved = $transfer->backup($user, $project);
     $library = $saved['scenes'][0];
     $rooftop = $saved['scenes'][1];
-    $mara = $saved['characters'][0]['id'];
+    $mara = array_column($saved['characters'], 'id', 'name')['Mara'];
     $act = $saved['acts'][0]['id'];
     $letter = array_values(array_filter($library['blocks'], static fn ($block) => $block['text'] === 'The letter arrived today.'))[0];
     $plot = $management->savePlot($user, $project, '', 'The ending', '', ['scenes' => [$rooftop['id']]]);
@@ -163,11 +163,32 @@ try {
         verify(str_starts_with($file, '%PDF-'), "$name generates a PDF");
         $text = $converter !== '' ? pdfText($file, $converter) : strip_tags($html);
         foreach ($include as $item) {
-            verify(str_contains($text, $item), "$name includes '$item'");
+            verify(str_contains($text, $item), "$name includes '$item' in text: " . mb_substr($text, 0, 320));
         }
         foreach ($exclude as $item) {
             verify(!str_contains($text, $item), "$name excludes '$item'");
         }
+    }
+    if (getenv('SCRIPTISES_LONG_PDF') === '1') {
+        $large = ['schema_version' => '1.0.0', 'project' => ['title' => 'Long PDF fixture'], 'scenes' => []];
+        for ($sceneIndex = 1; $sceneIndex <= 320; $sceneIndex++) {
+            $scene = ['id' => "scene-$sceneIndex", 'heading' => "INT. ROOM $sceneIndex - NIGHT", 'blocks' => []];
+            for ($blockIndex = 1; $blockIndex <= 10; $blockIndex++) {
+                $scene['blocks'][] = [
+                    'id' => "block-$sceneIndex-$blockIndex", 'type' => 'action',
+                    'text' => "Scene $sceneIndex line $blockIndex. The desk lamp illuminates the blue pages and a heavy envelope.",
+                ];
+            }
+            $large['scenes'][] = $scene;
+        }
+        $largeProject = $transfer->restore($user, $large, 'Long test fixture', 'json');
+        $document = $pdf->collect($user, $largeProject, PdfController::options(['scope' => 'full']));
+        verify(count($document['scenes']) === 320, 'full preview contains the long screenplay');
+        $largeFile = $pdf->generate($pdf->html($document), $document['title']);
+        if ($converter) {
+            verify(str_contains(pdfText($largeFile, $converter), 'Scene 320 line 10.'), 'long PDF retains the last block after chunked rendering');
+        }
+        echo "Large PDF check passed (320 scenes, 3,200 blocks).\n";
     }
     echo 'DOCX, Fountain, and 11 PDF export checks passed' . ($converter ? ' (extracted PDF text verified).' : ' (preview text verified; set PDFTOTEXT_BIN to check PDF text).') . "\n";
 } finally {

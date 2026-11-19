@@ -681,6 +681,7 @@ mark { color: #2d261e; background: #e9d29f; border-radius: .2rem; }
 .pdf-paper h2 { font-family: var(--mono); }
 .review-nav { justify-content: space-between; }
 .review-nav span { color: var(--muted); font-size: .9rem; }
+.review-nav button:disabled { opacity: .5; cursor: default; pointer-events: none; }
 
 @media (max-width: 55rem) {
     .filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

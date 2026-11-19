@@ -49,7 +49,7 @@ final class ProjectTransfer
         foreach ($rows('SELECT a.alias, c.uuid FROM character_aliases a JOIN characters c ON c.id = a.character_id WHERE c.project_id = ? ORDER BY a.id', $params) as $alias) {
             $aliases[$alias['uuid']][] = $alias['alias'];
         }
-        $document['characters'] = $rows('SELECT uuid AS id, name, description FROM characters WHERE project_id = ? ORDER BY id', $params);
+        $document['characters'] = $rows('SELECT uuid AS id, name, description FROM characters WHERE project_id = ? ORDER BY characters.id', $params);
         foreach ($document['characters'] as &$character) {
             $character['aliases'] = $aliases[$character['id']] ?? [];
         }

@@ -23,11 +23,17 @@ Private, lightweight screenplay writing and organization software built with PHP
 
 To upgrade an existing installation, start MySQL and run the migration command below. It applies `002_management.sql` to the current database.
 
-DOCX and Fountain import and PDF export are planned for Milestone 3.
+## Milestone 3 included
+
+- Upload .docx, .fountain, or .json files from **Import screenplay**. Review headings, scene details, and speakers alongside the source text. The project keeps the original uploaded file for download.
+- Open **Export PDF** in a project to preview a full screenplay, episode, act, scene selection, character dialogue, plot thread, or inclusive scene range. Search can also send its matches or checked results to the preview. Click **Download PDF** after checking the content.
+- See [document compatibility and deployment](docs/documents-and-deployment.md) for format limitations and hosting instructions.
+
+To upgrade an existing installation, install the Composer dependencies and apply `003_document_formats.sql` with the migration command below.
 
 ## Local setup (Laragon / Windows)
 
-1. Start Apache and MySQL in Laragon. Point the virtual host document root at `C:\laragon\www\scriptises\public`, or use the PHP server below.
+1. Start MySQL in Laragon. If using Apache, point the virtual host document root at `C:\laragon\www\scriptises\public` and configure front-controller routing as described in the [deployment guide](docs/documents-and-deployment.md).
 2. Create the database if it does not exist:
 
    ```powershell
@@ -35,19 +41,21 @@ DOCX and Fountain import and PDF export are planned for Milestone 3.
    ```
 
 3. Configure database connection values with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` environment variables as needed. Local defaults live in `config/config.php`; do not store production credentials there.
-4. Apply schema migrations:
+4. Install Composer dependencies and apply schema migrations:
 
    ```powershell
-   C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe database\migrate.php
+   $scriptisesPhp = 'C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe'
+   & $scriptisesPhp -d extension=zip C:\laragon\bin\composer\composer.phar install
+   & $scriptisesPhp database\migrate.php
    ```
 
 5. For a standalone local preview:
 
    ```powershell
-   C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe -S localhost:8080 -t public
+   & $scriptisesPhp -d extension=zip -S 127.0.0.1:8080 -t public
    ```
 
-   Open `http://localhost:8080/setup` and create the first private account.
+   Open `http://127.0.0.1:8080` and create the first private account if prompted. If your PHP configuration already loads ZIP, omit `-d extension=zip`.
 
 ## Checks
 
@@ -62,6 +70,9 @@ Run the database-backed workflows:
 ```powershell
 C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe tests\integration.php
 C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe tests\management.php
+C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe -d extension=zip tests\documents.php
 ```
+
+Set `PDFTOTEXT_BIN` to the path of Poppler's `pdftotext` to check the actual generated PDF text. Set `SCRIPTISES_LONG_PDF=1` to also test a 320-scene screenplay.
 
 The tests create isolated temporary users and projects and remove them at completion.
