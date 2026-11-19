@@ -1,0 +1,14 @@
+RewriteEngine On
+
+# The InfinityFree document root is the project directory. Only expose the app
+# entry point and the static files that belong to public/.
+RewriteRule "(^|/)\." - [F,L]
+RewriteRule ^(?:app|config|database|docs|storage|tests|vendor)(?:/|$) - [F,L,NC]
+
+RewriteRule ^(assets/[-a-z0-9_./]+\.(?:css|js|webp|png|jpe?g|svg|woff2)|favicon\.svg)$ public/$1 [END,NC]
+
+# Visiting index.php directly is equivalent to opening the home page.
+RewriteCond %{THE_REQUEST} "\s/+index\.php(?:[?\s])" [NC]
+RewriteRule ^index\.php$ / [R=302,L]
+RewriteRule ^index\.php$ - [END]
+RewriteRule ^ index.php [END]
